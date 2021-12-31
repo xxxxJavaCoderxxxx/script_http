@@ -20,7 +20,7 @@ class MyHttpHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
 
-        # метод получения города по GeoNameId
+        # получение города по GeoNameId
         if re.fullmatch(r'/\?geoNameId=\d+', self.path):
             geoNameId = self.path.split('=')[-1]
             city = list(filter(lambda _city: _city['geoNameId'] == geoNameId, map_dict))
@@ -30,7 +30,7 @@ class MyHttpHandler(BaseHTTPRequestHandler):
             else:
                 self.send_error(400, message=f'Request geoNameId \"{geoNameId}\" not found')
 
-        # метод получения списка городов на заданной странице с заданным количеством
+        # получение списка городов на заданной странице с заданным количеством
         elif re.fullmatch(r'/\?page=\d+&count=\d+', self.path):
             parsed_url = urlparse(self.path)
             page = int(parse_qs(parsed_url.query)['page'][0])
@@ -47,7 +47,7 @@ class MyHttpHandler(BaseHTTPRequestHandler):
                     self.send_error(400, message='Out of range')
             else:
                 self.send_error(400, message='Zero not allowed in page or count')
-        # метод поиска городов
+        # поиск 2ух городов 
         elif re.fullmatch(r'(/\?c1=[A-Z0-9%]+&c2=[A-Z0-9%]+)|'
                           r'(/\?c1=[A-Z0-9%]+&c2=[A-Z0-9%]+(&north=True|&timezone=True|&north=True&timezone=True))',
                           self.path):
@@ -67,16 +67,30 @@ class MyHttpHandler(BaseHTTPRequestHandler):
                                        reverse=True)
                 cities = [res_city1[0], res_city2[0]]
                 if 'north' in parse_qs(parsed_url.query).keys():
-                    cities = [cities, ({
-                        "North": sorted(cities[0], key=lambda sort_l: float(sort_l["latitude"]), reverse=True)[0][
-                            "name"]})]
+                    cities = [cities, {
+                        "North": (sorted(cities, key=lambda sort_l: float(sort_l["latitude"]), reverse=True)[0]["name"])}]
                 if 'timezone' in parse_qs(parsed_url.query).keys():
-                    timezone1 = datetime(2021,12,31,12, tzinfo=ZoneInfo(res_city1[0]['timezone']))
-                    timezone2 = datetime(2021, 12, 31, 12, tzinfo=ZoneInfo(res_city2[0]['timezone']))
-                    print(timezone1)
-                    print(timezone2)
+                    current_time = datetime.now()
+                    timezone1 = current_time.astimezone(ZoneInfo(res_city1[0]['timezone'])).utcoffset()
+                    timezone2 = current_time.astimezone(ZoneInfo(res_city2[0]['timezone'])).utcoffset()
+                    time_diff = int(abs((timezone1-timezone2).total_seconds()/3600))
+                    if 'north' in parse_qs(parsed_url.query).keys():
+                        cities[1].update({'TimeDifference' : time_diff})
+                    else:
+                        cities = [cities, {'TimeDiffernce' : time_diff}]
                 self._set_headers()
                 self.wfile.write((json.dumps(cities)).encode())
+        #
+        elif re.fullmatch(r'(/\?help=[A-Z0-9%]+)', self.path):
+            parsed_url = urlparse(unquote(self.path))
+            letters = transliterate(parse_qs(parsed_url.query)['help'][0])
+            probably_cities = list(filter(lambda _city: letters in _city['name'], map_dict))
+            if len(probably_cities) > 0: 
+                probably_cities = [city['name'] for city in probably_cities]
+                self._set_headers()
+                self.wfile.write(json.dumps(probably_cities).encode())
+            else:
+                self.send_error(400, message='Zero matches') 
         else:
             self.send_error(404)
 
